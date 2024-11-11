@@ -42,35 +42,78 @@ function findUnused(ast) {
   traverse(ast, {
     VariableDeclarator(path) {
       const variableName = path.node.id.name
+      console.log("Found VariableDeclarator:", variableName)
       declared.variables.add(variableName)
-      unused.variables.add(variableName) // Start assuming it's unused
+      unused.variables.add(variableName)
     },
     FunctionDeclaration(path) {
       const functionName = path.node.id.name
+      console.log("Found FunctionDeclaration:", functionName)
       declared.functions.add(functionName)
       unused.functions.add(functionName)
     },
     JSXIdentifier(path) {
-      // Add component detection logic
       const componentName = path.node.name
       declared.components.add(componentName)
       unused.components.add(componentName)
     },
   })
 
-  // Step 2: Traverse AST again to find used references
+  // Step 2: Traverse again to find used references
   traverse(ast, {
     Identifier(path) {
       const name = path.node.name
-      if (declared.variables.has(name)) unused.variables.delete(name)
-      if (declared.functions.has(name)) unused.functions.delete(name)
+
+      // Ignore identifiers that are part of their own declaration
+      if (
+        path.parent.type !== "VariableDeclarator" &&
+        path.parent.type !== "FunctionDeclaration" &&
+        path.scope.hasBinding(name) // Verify binding in scope
+      ) {
+        console.log("Identifier found:", name)
+        if (declared.variables.has(name)) {
+          unused.variables.delete(name)
+          console.log("Variable in use:", name)
+        }
+        if (declared.functions.has(name)) {
+          unused.functions.delete(name)
+          console.log("Function in use:", name)
+        }
+      }
+    },
+    CallExpression(path) {
+      const callee = path.get("callee")
+
+      // Handle both direct function calls and object method calls
+      if (callee.isIdentifier()) {
+        const functionName = callee.node.name
+        if (declared.functions.has(functionName)) {
+          console.log("Function called:", functionName)
+          unused.functions.delete(functionName)
+        }
+      } else if (
+        callee.isMemberExpression() &&
+        callee.get("object").isIdentifier()
+      ) {
+        const functionName = callee.get("object").node.name
+        if (declared.functions.has(functionName)) {
+          console.log("Function called (as method):", functionName)
+          unused.functions.delete(functionName)
+        }
+      }
     },
     JSXIdentifier(path) {
       const componentName = path.node.name
-      if (declared.components.has(componentName))
+      if (declared.components.has(componentName)) {
+        console.log("JSX component found:", componentName)
         unused.components.delete(componentName)
+      }
     },
   })
+
+  console.log("Unused variables:", Array.from(unused.variables))
+  console.log("Unused functions:", Array.from(unused.functions))
+  console.log("Unused components:", Array.from(unused.components))
 
   return {
     variables: Array.from(unused.variables),
@@ -85,13 +128,13 @@ function listUnused(unusedItems) {
   console.log("Unused Components:", unusedItems.components)
 }
 
-function modifyCode(ast, action) {
-  // Step 1: Track declared variables and functions
+function commentCode(ast) {
+  // Track declared and used identifiers
   const declaredVariables = new Set()
   const declaredFunctions = new Set()
   const usedIdentifiers = new Set()
 
-  // First traversal to gather all declared identifiers
+  // Step 1: Collect declared variables and functions
   traverse(ast, {
     VariableDeclarator(path) {
       const variableName = path.node.id.name
@@ -101,13 +144,12 @@ function modifyCode(ast, action) {
       const functionName = path.node.id.name
       declaredFunctions.add(functionName)
     },
-    // Track JSX components as well
     JSXIdentifier(path) {
       usedIdentifiers.add(path.node.name)
     },
   })
 
-  // Second traversal to track used identifiers
+  // Step 2: Track identifiers that are actually used
   traverse(ast, {
     Identifier(path) {
       if (
@@ -119,27 +161,66 @@ function modifyCode(ast, action) {
     },
   })
 
-  // Step 3: Modify code based on unused status
+  // Step 3: Modify code based on usage
   traverse(ast, {
     VariableDeclarator(path) {
       const variableName = path.node.id.name
       if (!usedIdentifiers.has(variableName)) {
-        // Variable is unused
-        if (action === "delete") {
-          path.remove()
-        } else if (action === "comment") {
-          path.addComment("leading", " TODO: Unused Variable")
-        }
+        path.replaceWithSourceString(
+          `/* TODO: Unused Variable \n${path.toString()}\n*/`
+        )
       }
     },
     FunctionDeclaration(path) {
       const functionName = path.node.id.name
       if (!usedIdentifiers.has(functionName)) {
-        // Function is unused
-        if (action === "delete") {
+        // Wrap in comment block for entire function
+        path.replaceWithSourceString(
+          `/* TODO: Unused Function \n${path.toString()}\n*/`
+        )
+      }
+    },
+  })
+}
+
+function deleteCode(ast) {
+  // Track declared and used identifiers within the current scope
+  const declaredVariables = new Set()
+  const declaredFunctions = new Set()
+  const usedIdentifiers = new Set()
+
+  function trackIdentifiers(path) {
+    if (path.isVariableDeclarator()) {
+      declaredVariables.add(path.node.id.name)
+    } else if (path.isFunctionDeclaration()) {
+      declaredFunctions.add(path.node.id.name)
+    } else if (path.isIdentifier()) {
+      if (
+        declaredVariables.has(path.node.name) ||
+        declaredFunctions.has(path.node.name)
+      ) {
+        usedIdentifiers.add(path.node.name)
+      }
+    }
+  }
+
+  traverse(ast, {
+    enter(path) {
+      // Clear sets at the beginning of each scope
+      declaredVariables.clear()
+      declaredFunctions.clear()
+      usedIdentifiers.clear()
+
+      trackIdentifiers(path)
+    },
+    Identifier(path) {
+      trackIdentifiers(path)
+    },
+    exit(path) {
+      if (path.isVariableDeclarator() || path.isFunctionDeclaration()) {
+        const name = path.node.id.name
+        if (!usedIdentifiers.has(name)) {
           path.remove()
-        } else if (action === "comment") {
-          path.addComment("leading", " TODO: Unused Function")
         }
       }
     },
@@ -151,5 +232,6 @@ module.exports = {
   parseFileToAST,
   findUnused,
   listUnused,
-  modifyCode,
+  commentCode,
+  deleteCode,
 }

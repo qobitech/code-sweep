@@ -1,13 +1,13 @@
 const fs = require("fs")
 const { program } = require("commander")
 const generate = require("@babel/generator").default
-const path = require("path")
 const {
   readDirectory,
   parseFileToAST,
   findUnused,
   listUnused,
-  modifyCode,
+  commentCode,
+  deleteCode,
 } = require("./index")
 
 // Set up CLI options
@@ -29,7 +29,13 @@ files.forEach((file) => {
     listUnused(unusedItems)
   } else if (options.action === "comment" || options.action === "delete") {
     // Modify the AST based on the action
-    modifyCode(ast, options.action)
+    if (options.action === "comment") {
+      commentCode(ast)
+    }
+
+    if (options.action === "delete") {
+      deleteCode(ast)
+    }
 
     // Convert the modified AST back to code
     const modifiedCode = generate(ast, {}, fs.readFileSync(file, "utf8")).code
