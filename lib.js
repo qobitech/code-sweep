@@ -3,17 +3,23 @@ const path = require("path")
 const parser = require("@babel/parser")
 const traverse = require("@babel/traverse").default
 
-// Function to read all files in a directory
-function readDirectory(dir) {
-  const files = fs.readdirSync(dir)
-  const jsFiles = files.filter(
-    (file) =>
-      file.endsWith(".js") ||
-      file.endsWith(".jsx") ||
-      file.endsWith(".ts") ||
-      file.endsWith(".tsx")
-  )
-  return jsFiles.map((file) => path.join(dir, file))
+// Recursive directory reader to get all files within the directory and subdirectories
+function readDirectory(directory) {
+  let files = []
+  fs.readdirSync(directory).forEach((file) => {
+    const fullPath = path.join(directory, file)
+    if (fs.statSync(fullPath).isDirectory()) {
+      files = files.concat(readDirectory(fullPath)) // Recursively read subdirectories
+    } else if (
+      fullPath.endsWith(".js") ||
+      fullPath.endsWith(".jsx") ||
+      fullPath.endsWith(".ts") ||
+      fullPath.endsWith(".tsx")
+    ) {
+      files.push(fullPath) // Only include JavaScript/TypeScript files
+    }
+  })
+  return files
 }
 
 // Function to parse a file to AST
@@ -25,7 +31,7 @@ function parseFileToAST(filePath) {
   })
 }
 
-function findUnused(ast) {
+function findUnused(ast, filePath) {
   const unused = {
     variables: new Set(),
     functions: new Set(),
@@ -37,19 +43,36 @@ function findUnused(ast) {
     components: new Set(),
   }
 
-  // Step 1: Traverse AST to find all declarations
+  const exported = new Set()
+  const imported = new Set()
+
+  // Step 1: Traverse AST to find all declarations and exports
   traverse(ast, {
     VariableDeclarator(path) {
       const variableName = path.node.id.name
-      console.log("Found VariableDeclarator:", variableName)
       declared.variables.add(variableName)
       unused.variables.add(variableName)
     },
     FunctionDeclaration(path) {
       const functionName = path.node.id.name
-      console.log("Found FunctionDeclaration:", functionName)
       declared.functions.add(functionName)
       unused.functions.add(functionName)
+    },
+    ExportNamedDeclaration(path) {
+      if (path.node.declaration) {
+        const declaration = path.node.declaration
+        if (declaration.id) {
+          const name = declaration.id.name
+          exported.add(name)
+        } else if (declaration.declarations) {
+          declaration.declarations.forEach((decl) => exported.add(decl.id.name))
+        }
+      } else {
+        path.node.specifiers.forEach((spec) => exported.add(spec.exported.name))
+      }
+    },
+    ImportSpecifier(path) {
+      imported.add(path.node.local.name)
     },
     JSXIdentifier(path) {
       const componentName = path.node.name
@@ -58,45 +81,28 @@ function findUnused(ast) {
     },
   })
 
-  // Step 2: Traverse again to find used references
+  // Step 2: Traverse again to find used references within this file
   traverse(ast, {
     Identifier(path) {
       const name = path.node.name
-
-      // Ignore identifiers that are part of their own declaration
       if (
         path.parent.type !== "VariableDeclarator" &&
         path.parent.type !== "FunctionDeclaration" &&
         path.scope.hasBinding(name) // Verify binding in scope
       ) {
-        console.log("Identifier found:", name)
         if (declared.variables.has(name)) {
           unused.variables.delete(name)
-          console.log("Variable in use:", name)
         }
         if (declared.functions.has(name)) {
           unused.functions.delete(name)
-          console.log("Function in use:", name)
         }
       }
     },
     CallExpression(path) {
       const callee = path.get("callee")
-
-      // Handle both direct function calls and object method calls
       if (callee.isIdentifier()) {
         const functionName = callee.node.name
         if (declared.functions.has(functionName)) {
-          console.log("Function called:", functionName)
-          unused.functions.delete(functionName)
-        }
-      } else if (
-        callee.isMemberExpression() &&
-        callee.get("object").isIdentifier()
-      ) {
-        const functionName = callee.get("object").node.name
-        if (declared.functions.has(functionName)) {
-          console.log("Function called (as method):", functionName)
           unused.functions.delete(functionName)
         }
       }
@@ -104,20 +110,27 @@ function findUnused(ast) {
     JSXIdentifier(path) {
       const componentName = path.node.name
       if (declared.components.has(componentName)) {
-        console.log("JSX component found:", componentName)
         unused.components.delete(componentName)
       }
     },
   })
 
+  // Step 3: Detect unused exports by comparing with imports
+  const unusedExports = [...exported].filter((name) => !imported.has(name))
+
+  // Log with file path for better traceability
+  console.log(`File: ${filePath}`)
   console.log("Unused variables:", Array.from(unused.variables))
   console.log("Unused functions:", Array.from(unused.functions))
   console.log("Unused components:", Array.from(unused.components))
+  console.log("Unused exports:", unusedExports)
 
   return {
+    filePath, // include the file path in the returned object
     variables: Array.from(unused.variables),
     functions: Array.from(unused.functions),
     components: Array.from(unused.components),
+    exports: unusedExports,
   }
 }
 
@@ -125,6 +138,7 @@ function listUnused(unusedItems) {
   console.log("Unused Variables:", unusedItems.variables)
   console.log("Unused Functions:", unusedItems.functions)
   console.log("Unused Components:", unusedItems.components)
+  console.log("Unused Exports:", unusedItems.exports)
 }
 
 function commentCode(ast) {

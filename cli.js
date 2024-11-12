@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("fs")
+const path = require("path")
 const { program } = require("commander")
 const generate = require("@babel/generator").default
 const {
@@ -19,16 +20,17 @@ program
   .parse(process.argv)
 
 const options = program.opts()
+const directory = options.directory || "./"
 
-// Process each file in the directory
-const files = readDirectory(options.directory || "./")
+// Process each file in the directory recursively
+const files = readDirectory(directory)
 files.forEach((file) => {
   const ast = parseFileToAST(file)
-  const unusedItems = findUnused(ast)
+  const unusedItems = findUnused(ast, file) // Pass file path for logging and traceability
 
   if (options.action === "list") {
     // List unused items without modifying the file
-    listUnused(unusedItems)
+    listUnused(unusedItems, file)
   } else if (options.action === "comment" || options.action === "delete") {
     // Modify the AST based on the action
     if (options.action === "comment") {
