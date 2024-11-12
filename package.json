@@ -1,17 +1,31 @@
 {
   "name": "code-sweep",
   "version": "1.0.0",
+  "description": "A command-line utility for analyzing JavaScript code, detecting unused variables and functions, and modifying code by listing, commenting, or deleting unused items based on the specified action.",
   "main": "index.js",
+  "bin": {
+    "code-sweep": "./cli.js"
+  },
   "scripts": {
     "test": "jest"
   },
-  "bin": {
-    "codeclean": "./index.js"
+  "files": [
+    "index.js",
+    "cli.js",
+    "lib.js"
+  ],
+  "keywords": [
+    "Unused variables",
+    "Unused functions",
+    "Modify code",
+    "Code sweep"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qobitech/code-sweep.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "Franklyn Edekobi <edekobifrank@gmail.com>",
+  "license": "MIT",
   "dependencies": {
     "@babel/generator": "^7.26.2",
     "@babel/parser": "^7.26.2",

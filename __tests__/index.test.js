@@ -7,7 +7,7 @@ const {
   listUnused,
   commentCode,
   deleteCode,
-} = require("../index")
+} = require("../lib")
 
 describe("Code Sweep Utility Tests", () => {
   // Sample files and ASTs for testing
@@ -32,10 +32,10 @@ describe("Code Sweep Utility Tests", () => {
     )
   })
 
-  // afterAll(() => {
-  //   // Cleanup sample files
-  //   fs.rmdirSync(testDir, { recursive: true })
-  // })
+  afterAll(() => {
+    // Cleanup sample files
+    fs.rmdirSync(testDir, { recursive: true })
+  })
 
   test("readDirectory should return JavaScript and TypeScript files", () => {
     const files = readDirectory(testDir)

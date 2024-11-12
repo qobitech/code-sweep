@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const fs = require("fs")
 const { program } = require("commander")
 const generate = require("@babel/generator").default
@@ -8,7 +9,7 @@ const {
   listUnused,
   commentCode,
   deleteCode,
-} = require("./index")
+} = require("./lib")
 
 // Set up CLI options
 program
