@@ -1,6 +1,6 @@
 {
   "name": "code-sweep",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A command-line utility for analyzing JavaScript code, detecting unused variables and functions, and modifying code by listing, commenting, or deleting unused items based on the specified action.",
   "main": "index.js",
   "bin": {
